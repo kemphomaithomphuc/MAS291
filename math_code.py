@@ -44,8 +44,8 @@ print(f"Accuracy  : {accuracy_score(y_test, y_pred):.4f}")
 print("Classif. report\n", classification_report(y_test, y_pred))
 
 # 6️⃣ ─── Generate & save feature-risk charts ─────────────────────────
-OUT_DIR = "charts"
-os.makedirs(OUT_DIR, exist_ok=True)
+#OUT_DIR = "charts"
+#os.makedirs(OUT_DIR, exist_ok=True)
 
 for col in X.columns:
     plt.figure(figsize=(6, 4))
