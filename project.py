@@ -1,81 +1,67 @@
 import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import LabelEncoder
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    accuracy_score, roc_auc_score, roc_curve,
-    confusion_matrix, classification_report
-)
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.feature_selection import SelectFromModel
 
 # 1. Read the dataset
 file_path = "survey_lung_cancer.csv"
 try:
     df = pd.read_csv(file_path)
-    print("Read data successfully.")
+    print("✅ Read data successfully.")
 except FileNotFoundError:
-    print(f"File {file_path} not found. Please check the path and try again.")
+    print(f"❌ File {file_path} not found. Please check the path and try again.")
+    exit()
 
-# 2. Encode categorical variables
+# Encode categorical variables
 label_enc = LabelEncoder()
-df['GENDER'] = label_enc.fit_transform(df['GENDER'])         # M=1, F=0
-df['LUNG_CANCER'] = label_enc.fit_transform(df['LUNG_CANCER'])  # YES=1, NO=0
+df['GENDER'] = label_enc.fit_transform(df['GENDER'])  # M:1, F:0
+df['LUNG_CANCER'] = df['LUNG_CANCER'].map({'NO': 0, 'YES': 1})
 
-# 3. Prepare features and target
-X = df.drop(columns=['LUNG_CANCER'])
-y = df['LUNG_CANCER']
+# Run logistic regression for each feature and collect p-values
+p_values_list = []
+target = 'LUNG_CANCER'
+features = [col for col in df.columns if col != target]
 
-# 4. Train/test split
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
+for col in features:
+    try:
+        X = df[[col]].dropna()
+        X = sm.add_constant(X)
+        y = df.loc[X.index, target]
+        model = sm.Logit(y, X).fit(disp=0)
+        p_value = model.pvalues[col]
+        print(f"{col}: P-value = {p_value:.11f}")
+        if p_value < 0.01:
+            p_values_list.append((col, p_value))
+    except Exception as e:
+        print(f"{col}: Error - {e}")
 
-# 5. Logistic Regression model
-log_reg = LogisticRegression(max_iter=1000)
-log_reg.fit(X_train, y_train)
+# Top 4 variables with the lowest p-values
+top4_vars = sorted(p_values_list, key=lambda x: x[1])[:4]
 
-# 6. Select top 4 features
-selector = SelectFromModel(log_reg, max_features=4, prefit=True)
-top_features = X.columns[selector.get_support()].tolist()
+print("\n✅ Top 4 Predictors (p < 0.01):")
+for var, pval in top4_vars:
+    print(f"{var}: P-value = {pval:.4e}")
 
-# 7. P-values using statsmodels
-X_with_const = sm.add_constant(X)
-logit_model = sm.Logit(y, X_with_const)
-result = logit_model.fit()
+# Plot the percentage distribution using a bar chart with labels
+plt.figure(figsize=(6, 4))
+cancer_counts = df['LUNG_CANCER'].value_counts(normalize=True) * 100
+labels = ['No Lung Cancer', 'Lung Cancer']
+colors = ['green', 'red']  # 0: No, 1: Yes
 
-# 8. Print p-values
-print("=== P-values for Each Feature ===")
-print(result.pvalues.sort_values())
+# Map index 0 → 'No Lung Cancer', 1 → 'Lung Cancer'
+cancer_counts.index = labels
 
-# 9. Print top 4 features with p-values
-print("\nTop 4 features most associated with Lung Cancer risk:")
-for feature in top_features:
-    print(f"- {feature} (p-value: {result.pvalues[feature]:.10f})")
+sns.barplot(x=cancer_counts.index, y=cancer_counts.values, palette=colors)
 
-# 10. Generate chart showing lung cancer risk distribution by gender
-# Decode gender and lung cancer for display
-gender_map = {1: 'M', 0: 'F'}
-cancer_map = {1: 'YES', 0: 'NO'}
-df_plot = df.copy()
-df_plot['GENDER'] = df_plot['GENDER'].map(gender_map)
-df_plot['LUNG_CANCER'] = df_plot['LUNG_CANCER'].map(cancer_map)
+# Add percentage labels on top of each bar
+for i, value in enumerate(cancer_counts.values):
+    plt.text(i, value + 1, f'{value:.1f}%', ha='center', va='bottom', fontsize=11)
 
-# Create crosstab and normalize by row (gender)
-crosstab = pd.crosstab(df_plot['GENDER'], df_plot['LUNG_CANCER'], normalize='index') * 100
-
-# Define custom color mapping: 'YES' → red, 'NO' → blue
-color_map = ['blue' if col == 'NO' else 'red' for col in crosstab.columns]
-
-# Plot with custom colors
-crosstab.plot(kind='bar', stacked=True, color=color_map)
-plt.title('Percentage Distribution of Lung Cancer Risk by Gender')
-plt.ylabel('Percentage (%)')
-plt.xlabel('Gender')
-plt.legend(title='Lung Cancer Risk')
-plt.xticks(rotation=0)
-plt.tight_layout()
+plt.ylabel('Percentage')
+plt.title('Percentage Distribution of Lung Cancer Risk')
+plt.ylim(0, 100)
 plt.grid(axis='y', linestyle='--', alpha=0.7)
 plt.show()
+
+
