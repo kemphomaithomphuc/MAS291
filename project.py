@@ -1,67 +1,84 @@
+# Import thư viện cần thiết
 import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# 1. Read the dataset
-file_path = "survey_lung_cancer.csv"
-try:
-    df = pd.read_csv(file_path)
-    print("✅ Read data successfully.")
-except FileNotFoundError:
-    print(f"❌ File {file_path} not found. Please check the path and try again.")
-    exit()
+# Cài đặt hiển thị
+sns.set(style="whitegrid")
+plt.rcParams['axes.titlepad'] = 15
 
-# Encode categorical variables
+# 1. Đọc dữ liệu
+file_path = "survey_lung_cancer.csv"
+df = pd.read_csv(file_path)
+
+# 2. Mã hóa biến phân loại
 label_enc = LabelEncoder()
-df['GENDER'] = label_enc.fit_transform(df['GENDER'])  # M:1, F:0
+df['GENDER'] = label_enc.fit_transform(df['GENDER'])  # M=1, F=0
 df['LUNG_CANCER'] = df['LUNG_CANCER'].map({'NO': 0, 'YES': 1})
 
-# Run logistic regression for each feature and collect p-values
-p_values_list = []
-target = 'LUNG_CANCER'
-features = [col for col in df.columns if col != target]
-
-for col in features:
+# 3. Hồi quy logistic đơn biến để lấy p-value
+p_values = []
+for col in df.columns:
+    if col == 'LUNG_CANCER':
+        continue
     try:
-        X = df[[col]].dropna()
-        X = sm.add_constant(X)
-        y = df.loc[X.index, target]
+        X = sm.add_constant(df[[col]])
+        y = df['LUNG_CANCER']
         model = sm.Logit(y, X).fit(disp=0)
-        p_value = model.pvalues[col]
-        print(f"{col}: P-value = {p_value:.11f}")
-        if p_value < 0.01:
-            p_values_list.append((col, p_value))
-    except Exception as e:
-        print(f"{col}: Error - {e}")
+        p_values.append((col, model.pvalues[col]))
+    except:
+        continue
 
-# Top 4 variables with the lowest p-values
-top4_vars = sorted(p_values_list, key=lambda x: x[1])[:4]
+# 4. Lấy 4 biến có p-value nhỏ nhất
+top_features = sorted(p_values, key=lambda x: x[1])[:4]
+top_vars = [f[0] for f in top_features]
 
-print("\n✅ Top 4 Predictors (p < 0.01):")
-for var, pval in top4_vars:
-    print(f"{var}: P-value = {pval:.4e}")
+# 5. Chuẩn bị dữ liệu để dễ hiển thị
+df_plot = df.copy()
+df_plot['GENDER'] = df_plot['GENDER'].map({1: 'M', 0: 'F'})
+df_plot['LUNG_CANCER'] = df_plot['LUNG_CANCER'].map({1: 'YES', 0: 'NO'})
 
-# Plot the percentage distribution using a bar chart with labels
-plt.figure(figsize=(6, 4))
-cancer_counts = df['LUNG_CANCER'].value_counts(normalize=True) * 100
-labels = ['No Lung Cancer', 'Lung Cancer']
-colors = ['green', 'red']  # 0: No, 1: Yes
+# 6. Vẽ biểu đồ riêng cho từng giới tính
+for gender in ['M', 'F']:
+    gender_df = df_plot[df_plot['GENDER'] == gender]
+    fig, axes = plt.subplots(2, 2, figsize=(13, 10))  # Tăng khoảng cách
+    axes = axes.flatten()
 
-# Map index 0 → 'No Lung Cancer', 1 → 'Lung Cancer'
-cancer_counts.index = labels
+    for i, feature in enumerate(top_vars):
+        # Tạo bảng phân bố phần trăm
+        grouped = pd.crosstab(
+            index=gender_df[feature],
+            columns=gender_df['LUNG_CANCER'],
+            normalize='index'
+        ) * 100
+        grouped = grouped.reset_index()
+        melted = pd.melt(grouped, id_vars=[feature], var_name='LUNG_CANCER', value_name='PERCENTAGE')
 
-sns.barplot(x=cancer_counts.index, y=cancer_counts.values, palette=colors)
+        ax = axes[i]
+        chart = sns.barplot(
+            data=melted,
+            x=feature,
+            y='PERCENTAGE',
+            hue='LUNG_CANCER',
+            palette={'YES': 'red', 'NO': 'green'},
+            ax=ax,
+            ci=None
+        )
 
-# Add percentage labels on top of each bar
-for i, value in enumerate(cancer_counts.values):
-    plt.text(i, value + 1, f'{value:.1f}%', ha='center', va='bottom', fontsize=11)
+        # Tiêu đề và nhãn trục
+        ax.set_title(f'{gender} - {feature}', fontsize=14, pad=12)
+        ax.set_xlabel(feature, labelpad=8)
+        ax.set_ylabel('Percentage (%)', labelpad=8)
+        ax.set_ylim(0, 100)
+        ax.grid(axis='y', linestyle='--', alpha=0.6)
+        ax.legend(title='Lung Cancer', bbox_to_anchor=(1.01, 1), borderaxespad=0.)
 
-plt.ylabel('Percentage')
-plt.title('Percentage Distribution of Lung Cancer Risk')
-plt.ylim(0, 100)
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.show()
+        # Hiển thị % trên cột
+        for container in chart.containers:
+            chart.bar_label(container, fmt='%.1f%%', label_type='edge', fontsize=9, padding=2)
 
-
+    plt.tight_layout(pad=3.0)
+    plt.subplots_adjust(top=0.92)
+    plt.show()
