@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": ".git/hooks"
+		},
+		{
+			"path": ".git/info"
+		},
+		{
+			"path": ".git/logs"
+		},
+		{
+			"path": ".git/objects"
+		},
+		{
+			"path": ".git/refs"
+		}
+	]
+}
