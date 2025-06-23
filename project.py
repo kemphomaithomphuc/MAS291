@@ -13,9 +13,9 @@ file_path = "survey_lung_cancer.csv"
 try:
     df = pd.read_csv(file_path)
     df.columns = df.columns.str.strip().str.upper()
-    print("✅ Read data successfully.")
+    print("Read data successfully.")
 except FileNotFoundError:
-    print(f"❌ File {file_path} not found. Please check the path and try again.")
+    print(f"File {file_path} not found. Please check the path and try again.")
     exit()
 
 # Encode categorical variables
@@ -44,7 +44,7 @@ for col in features:
 # Top 4 variables with the lowest p-values
 top4_vars = sorted(p_values_list, key=lambda x: x[1])[:4]
 
-print("\n✅ Top 4 Predictors (p < 0.01):")
+print("\nTop 4 Predictors (p < 0.01):")
 for var, pval in top4_vars:
     print(f"{var}: P-value = {pval:.4e}")
 
@@ -57,7 +57,7 @@ colors = ['green', 'red']  # 0: No, 1: Yes
 # Map index 0 → 'No Lung Cancer', 1 → 'Lung Cancer'
 cancer_counts.index = labels
 
-sns.barplot(x=cancer_counts.index, y=cancer_counts.values, palette=colors)
+sns.barplot(x=cancer_counts.index, y=cancer_counts.values, palette=colors, legend=False) # newUpdate
 
 # Add percentage labels on top of each bar
 for i, value in enumerate(cancer_counts.values):
@@ -69,7 +69,7 @@ plt.ylim(0, 100)
 plt.grid(axis='y', linestyle='--', alpha=0.7)
 plt.show()
 
-#Curve
+# Curve
 selected_features = ['ALCOHOL CONSUMING', 'ALLERGY', 'COUGHING', 'WHEEZING']
 y = df['LUNG_CANCER']  # khai báo rõ biến mục tiêu
 
@@ -81,16 +81,19 @@ for i, feature in enumerate(selected_features):
     model = LogisticRegression()
     model.fit(X, y)
 
-    x_range = np.linspace(X.min()[0], X.max()[0], 300).reshape(-1, 1)
-    y_prob = model.predict_proba(x_range)[:, 1]
+    x_range = np.linspace(X.min().iloc[0], X.max().iloc[0], 300).reshape(-1, 1) #newUpdate
+    y_prob = model.predict_proba(pd.DataFrame(x_range, columns=[feature]))[:, 1] #newUpdate
+
 
     axs[i].scatter(X, y, color='black', alpha=0.3, label='Actual data')
     axs[i].plot(x_range, y_prob, color='red', linewidth=2, label='Logistic Regression Curve')
-    axs[i].set_title(f"Probability of Lung Cancer by {feature}")
-    axs[i].set_xlabel(feature)
-    axs[i].set_ylabel("Probability (%)")
+    axs[i].set_title(f"Probability of Lung Cancer by {feature}", fontsize=14)
+    axs[i].set_xlabel(feature, fontsize=12)
+    axs[i].set_ylabel("Probability (%)", fontsize=12)
     axs[i].legend()
     axs[i].grid(alpha=0.3)
 
-plt.tight_layout()
+# fix layout
+plt.tight_layout(pad=3.0)
+fig.subplots_adjust(hspace=0.4, top=0.92)
 plt.show()
