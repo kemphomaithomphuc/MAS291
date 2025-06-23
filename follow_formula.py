@@ -1,5 +1,3 @@
-# survey_lung_cancer.py
-
 import pandas as pd
 import statsmodels.api as sm
 from sklearn.preprocessing import LabelEncoder
@@ -16,11 +14,9 @@ df = pd.read_csv(file_path)
 
 # 2. Mã hóa biến phân loại
 label_enc = LabelEncoder()
-if df['GENDER'].dtype == 'object':
-    df['GENDER'] = label_enc.fit_transform(df['GENDER'])  # M=1, F=0
-
-if df['LUNG_CANCER'].dtype == 'object':
-    df['LUNG_CANCER'] = df['LUNG_CANCER'].map({'NO': 0, 'YES': 1})
+for col in df.columns:
+    if df[col].dtype == 'object':
+        df[col] = label_enc.fit_transform(df[col])  # Mã hóa toàn bộ biến object
 
 # 3. Tính p-value bằng hồi quy logistic đơn biến
 p_values = []
@@ -43,19 +39,43 @@ print("🎯 Top 4 biến liên quan nhất đến ung thư phổi:")
 for var, p in top_features:
     print(f"- {var} (p-value: {p:.5f})")
 
-# 5. Chuẩn bị dữ liệu vẽ biểu đồ
+# 5. Hồi quy logistic đa biến với 4 biến
+X_multi = sm.add_constant(df[top_vars])
+y_multi = df['LUNG_CANCER']
+multi_model = sm.Logit(y_multi, X_multi).fit()
+print("\n📊 Kết quả hồi quy logistic đa biến (Top 4 biến):")
+print(multi_model.summary())
+
+# 6. Tính xác suất dự đoán với 4 biến
+df['PREDICTED_PROB_TOP4'] = multi_model.predict(X_multi)
+
+# ===============================
+# ✅ THÊM: Hồi quy logistic với TOÀN BỘ biến
+# ===============================
+
+X_all = df.drop(columns=['LUNG_CANCER', 'PREDICTED_PROB_TOP4'])  # loại trừ target và predicted
+X_all = sm.add_constant(X_all)
+y_all = df['LUNG_CANCER']
+
+full_model = sm.Logit(y_all, X_all).fit()
+print("\n🧠 Kết quả hồi quy logistic đa biến với TẤT CẢ các biến:")
+print(full_model.summary())
+
+# Thêm xác suất dự đoán từ mô hình tổng thể
+df['PREDICTED_PROB_ALL'] = full_model.predict(X_all)
+
+# 7. Chuẩn bị dữ liệu vẽ biểu đồ
 df_plot = df.copy()
 df_plot['GENDER'] = df_plot['GENDER'].map({1: 'M', 0: 'F'})
 df_plot['LUNG_CANCER'] = df_plot['LUNG_CANCER'].map({1: 'YES', 0: 'NO'})
 
-# 6. Vẽ biểu đồ phân tích theo giới tính
+# 8. Vẽ biểu đồ phân tích theo giới tính (vẫn dùng 4 biến top)
 for gender in ['M', 'F']:
     gender_df = df_plot[df_plot['GENDER'] == gender]
     fig, axes = plt.subplots(2, 2, figsize=(13, 10))
     axes = axes.flatten()
 
     for i, feature in enumerate(top_vars):
-        # Tính phần trăm
         grouped = pd.crosstab(
             index=gender_df[feature],
             columns=gender_df['LUNG_CANCER'],
@@ -90,7 +110,17 @@ for gender in ['M', 'F']:
     plt.suptitle(f'Phân bố nguy cơ ung thư phổi theo {gender}', fontsize=16)
     plt.show()
 
-# 7. Xuất dữ liệu đã chọn thành file
-cleaned_df = df[top_vars + ['LUNG_CANCER']]
-cleaned_df.to_csv("cleaning_data.csv", index=False)
-print(f"\n✅ Đã lưu dữ liệu gồm các biến: {top_vars} và 'LUNG_CANCER' vào cleaning_data.csv")
+# 9. Trực quan hóa xác suất dự đoán từ mô hình toàn phần
+plt.figure(figsize=(10, 5))
+sns.histplot(df['PREDICTED_PROB_ALL'], bins=20, kde=True, color='darkorange')
+plt.title('Phân bố xác suất dự đoán (toàn bộ biến)', fontsize=16)
+plt.xlabel('Xác suất (0 → 1)', fontsize=12)
+plt.ylabel('Số người', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+# 10. Xuất dữ liệu đã chọn thành file
+final_df = df[top_vars + ['LUNG_CANCER', 'PREDICTED_PROB_TOP4', 'PREDICTED_PROB_ALL']]
+final_df.to_csv("cleaning_data.csv", index=False)
+print(f"\n✅ Đã lưu dữ liệu gồm {top_vars}, 'LUNG_CANCER', 'PREDICTED_PROB_TOP4', 'PREDICTED_PROB_ALL' vào cleaning_data.csv")
