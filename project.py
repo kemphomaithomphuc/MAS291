@@ -7,58 +7,70 @@ from sklearn.linear_model import LogisticRegression
 import numpy as np
 
 # Cài đặt hiển thị
-sns.set_theme(style="whitegrid")
+sns.set(style="whitegrid")
 plt.rcParams['axes.titlepad'] = 15
 
-# Đọc dữ liệu
+# 1. Đọc dữ liệu
 file_path = "survey_lung_cancer.csv"
-try:
-    df = pd.read_csv(file_path)
-    df.columns = df.columns.str.strip().str.upper()
-    print("Read data successfully.")
-except FileNotFoundError:
-    print(f"File {file_path} not found. Please check the path and try again.")
-    raise SystemExit
+df = pd.read_csv(file_path)
 
-# Mã hóa biến phân loại
+# 2. Mã hóa biến phân loại
 label_enc = LabelEncoder()
-df['GENDER'] = label_enc.fit_transform(df['GENDER'])  # M:1, F:0
-df['LUNG_CANCER'] = df['LUNG_CANCER'].map({'NO': 0, 'YES': 1})
+for col in df.columns:
+    if df[col].dtype == 'object':
+        df[col] = label_enc.fit_transform(df[col])  # Mã hóa toàn bộ biến object
 
-# Hồi quy logistic đơn biến để lấy p-value
+# 3. Tính p-value bằng hồi quy logistic đơn biến
 p_values = []
-target = 'LUNG_CANCER'
-features = [col for col in df.columns if col != target]
-
-for col in features:
-    try:
-        X = sm.add_constant(df[[col]])
-        y = df[target]
-        model = sm.Logit(y, X).fit(disp=0)
-        p = model.pvalues[col]
-        p_values.append((col, p))
-    except:
+for col in df.columns:
+    if col == 'LUNG_CANCER':
         continue
+    try:
+        X = sm.add_constant(df[[col]])  # Thêm hệ số chệch β0
+        y = df['LUNG_CANCER']
+        model = sm.Logit(y, X).fit(disp=0)
+        p_values.append((col, model.pvalues[col]))
+    except Exception as e:
+        print(f"❌ Bỏ qua biến '{col}' do lỗi: {e}")
 
-# In toàn bộ p-value
-print("\nP-values của tất cả các biến:")
-for var, p in sorted(p_values, key=lambda x: x[1]):
-    print(f"{var:15}: {p:.4f}")
-
-# Lấy 4 biến có p-value nhỏ nhất
+# 4. Chọn 4 biến có p-value nhỏ nhất
 top_features = sorted(p_values, key=lambda x: x[1])[:4]
 top_vars = [f[0] for f in top_features]
 
-print("\n4 biến có ý nghĩa thống kê cao nhất:")
-for var in top_vars:
-    print(f"- {var}")
+print("🎯 Top 4 biến liên quan nhất đến ung thư phổi:")
+for var, p in top_features:
+    print(f"- {var} (p-value: {p:.5f})")
 
-# Chuẩn bị dữ liệu để hiển thị
+# 5. Hồi quy logistic đa biến với 4 biến
+X_multi = sm.add_constant(df[top_vars])
+y_multi = df['LUNG_CANCER']
+multi_model = sm.Logit(y_multi, X_multi).fit()
+print("\n📊 Kết quả hồi quy logistic đa biến (Top 4 biến):")
+print(multi_model.summary())
+
+# 6. Tính xác suất dự đoán với 4 biến
+df['PREDICTED_PROB_TOP4'] = multi_model.predict(X_multi)
+
+# ===============================
+# ✅ Hồi quy logistic với TOÀN BỘ biến
+# ===============================
+
+X_all = df.drop(columns=['LUNG_CANCER', 'PREDICTED_PROB_TOP4'])  # loại trừ target và predicted
+X_all = sm.add_constant(X_all)
+y_all = df['LUNG_CANCER']
+
+full_model = sm.Logit(y_all, X_all).fit_regularized()
+print("\n🧠 Kết quả hồi quy logistic đa biến với TẤT CẢ các biến:")
+print(full_model.summary())
+
+df['PREDICTED_PROB_ALL'] = full_model.predict(X_all)
+
+# 7. Chuẩn bị dữ liệu vẽ biểu đồ
 df_plot = df.copy()
 df_plot['GENDER'] = df_plot['GENDER'].map({1: 'M', 0: 'F'})
 df_plot['LUNG_CANCER'] = df_plot['LUNG_CANCER'].map({1: 'YES', 0: 'NO'})
 
-# Biểu đồ phân bố phần trăm theo giới tính
+# 8. Vẽ biểu đồ phân tích theo giới tính (vẫn dùng 4 biến top)
 for gender in ['M', 'F']:
     gender_df = df_plot[df_plot['GENDER'] == gender]
     fig, axes = plt.subplots(2, 2, figsize=(13, 10))
@@ -96,9 +108,20 @@ for gender in ['M', 'F']:
 
     plt.tight_layout(pad=3.0)
     plt.subplots_adjust(top=0.92)
+    plt.suptitle(f'Phân bố nguy cơ ung thư phổi theo {gender}', fontsize=16)
     plt.show()
 
-# Biểu đồ xác suất hồi quy logistic theo từng biến
+# 9. Trực quan hóa xác suất dự đoán từ mô hình toàn phần
+plt.figure(figsize=(10, 5))
+sns.histplot(df['PREDICTED_PROB_ALL'], bins=20, kde=True, color='darkorange')
+plt.title('Phân bố xác suất dự đoán (toàn bộ biến)', fontsize=16)
+plt.xlabel('Xác suất (0 → 1)', fontsize=12)
+plt.ylabel('Số người', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+# 10. Biểu đồ sigmoid với từng biến Top 4
 y = df['LUNG_CANCER']
 fig, axs = plt.subplots(2, 2, figsize=(14, 10))
 axs = axs.flatten()
@@ -111,12 +134,11 @@ for i, feature in enumerate(top_vars):
     x_range = np.linspace(X[feature].min(), X[feature].max(), 300).reshape(-1, 1)
     beta1 = model.coef_[0][0]
     beta0 = model.intercept_[0]
-    
-    # In ra phương trình sigmoid
+
     print(f"\n{feature}: f(x) = 1 / (1 + exp(-({beta1:.4f} * x + {beta0:.4f})))")
-    
+
     y_prob = 1 / (1 + np.exp(-(beta1 * x_range + beta0)))
-    
+
     axs[i].scatter(X, y, color='black', alpha=0.3, label='Actual data')
     axs[i].plot(x_range, y_prob, color='red', linewidth=2, label='Sigmoid Curve')
     axs[i].set_title(f"Probability of Lung Cancer by {feature}", fontsize=14)
@@ -128,3 +150,8 @@ for i, feature in enumerate(top_vars):
 plt.tight_layout(pad=3.0)
 fig.subplots_adjust(hspace=0.4, top=0.92)
 plt.show()
+
+# 11. Xuất dữ liệu
+final_df = df[top_vars + ['LUNG_CANCER', 'PREDICTED_PROB_TOP4', 'PREDICTED_PROB_ALL']]
+final_df.to_csv("cleaning_data.csv", index=False)
+print(f"\n✅ Đã lưu dữ liệu gồm {top_vars}, 'LUNG_CANCER', 'PREDICTED_PROB_TOP4', 'PREDICTED_PROB_ALL' vào cleaning_data.csv")
