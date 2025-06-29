@@ -134,7 +134,7 @@ for i, feature in enumerate(top_vars):
     axs[i].plot(x_range, y_prob, color='red', linewidth=2, label='Sigmoid Curve')
     axs[i].set_title(f"Probability of Lung Cancer by {feature}", fontsize=14)
     axs[i].set_xlabel(feature, fontsize=12)
-    axs[i].set_ylabel("Probability (%)", fontsize=12)
+    axs[i].set_ylabel("Probability (0-1)", fontsize=12)
     axs[i].legend()
     axs[i].grid(alpha=0.3)
 
@@ -147,21 +147,30 @@ final_df = df[top_vars + ['LUNG_CANCER', 'PREDICTED_PROB_TOP4', 'PREDICTED_PROB_
 final_df.to_csv("cleaning_data.csv", index=False)
 print(f"\n✅ Đã lưu dữ liệu gồm {top_vars}, 'LUNG_CANCER', 'PREDICTED_PROB_TOP4', 'PREDICTED_PROB_ALL' vào cleaning_data.csv")
 
-# 13. Nhập thông tin bệnh nhân để dự đoán
+# 13. Nhập thông tin bệnh nhân để dự đoán nguy cơ ung thư phổi
+def get_valid_input(prompt, is_age=False):
+    while True:
+        val = input(prompt)
+        try:
+            val = float(val)
+            if not is_age and val not in [0.0, 1.0]:
+                print("⚠️ Vui lòng nhập 0 hoặc 1.")
+            else:
+                return val
+        except:
+            print("⚠️ Giá trị không hợp lệ. Vui lòng nhập lại.")
+
 print("\n🧪 Nhập thông tin bệnh nhân để dự đoán nguy cơ ung thư phổi")
 patient_data_top4 = {}
 for feature in top_vars:
-    val = input(f"Nhập giá trị cho '{feature}' (0 hoặc 1 hoặc số cụ thể nếu là số): ")
-    try:
-        patient_data_top4[feature] = float(val)
-    except:
-        print(f"⚠️ Giá trị không hợp lệ cho '{feature}', mặc định 0")
-        patient_data_top4[feature] = 0.0
+    prompt = f"Nhập giá trị cho '{feature}' ({'giá trị tuổi' if feature == 'AGE' else '0 hoặc 1'}): "
+    is_age = (feature == 'AGE')
+    patient_data_top4[feature] = get_valid_input(prompt, is_age)
 
 input_df_top4 = pd.DataFrame([patient_data_top4])
-input_df_top4 = sm.add_constant(input_df_top4, has_constant='add')  # ✅ Fix shape
+input_df_top4 = sm.add_constant(input_df_top4, has_constant='add')
 prob_top4 = multi_model.predict(input_df_top4)[0]
-print(f"📈 Xác suất bị ung thư phổi (Top 4 biến): {prob_top4:.4f} ({prob_top4*100:.2f}%)")
+print(f"📈 Xác suất bị ung thư phổi (Top 4 biến): {prob_top4:.10f} ({prob_top4*100:.8f}%)")
 
 use_full = input("\n❓ Bạn có muốn dự đoán bằng mô hình TẤT CẢ biến? (y/n): ").strip().lower()
 if use_full == 'y':
@@ -169,14 +178,11 @@ if use_full == 'y':
     for col in df.columns:
         if col in ['LUNG_CANCER', 'PREDICTED_PROB_TOP4', 'PREDICTED_PROB_ALL']:
             continue
-        val = input(f"Nhập giá trị cho '{col}' (0 hoặc 1 hoặc số cụ thể): ")
-        try:
-            patient_data_full[col] = float(val)
-        except:
-            print(f"⚠️ Giá trị không hợp lệ cho '{col}', mặc định 0")
-            patient_data_full[col] = 0.0
+        prompt = f"Nhập giá trị cho '{col}' ({'giá trị tuổi' if col == 'AGE' else '0 hoặc 1'}): "
+        is_age = (col == 'AGE')
+        patient_data_full[col] = get_valid_input(prompt, is_age)
 
     input_df_full = pd.DataFrame([patient_data_full])
-    input_df_full = sm.add_constant(input_df_full, has_constant='add')  # ✅ Fix shape
+    input_df_full = sm.add_constant(input_df_full, has_constant='add')
     prob_full = full_model.predict(input_df_full)[0]
-    print(f"🧠 Xác suất bị ung thư phổi (Toàn bộ biến): {prob_full:.4f} ({prob_full*100:.2f}%)")
+    print(f"🧠 Xác suất bị ung thư phổi (Toàn bộ biến): {prob_full:.10f} ({prob_full*100:.8f}%)")
